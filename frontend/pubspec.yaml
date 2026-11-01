@@ -39,6 +39,7 @@ dependencies:
   intl: ^0.20.3
   qr_flutter: ^4.1.0
   http: ^1.2.0
+  flutter_blue_plus: ^2.3.14
 
 dev_dependencies:
   flutter_test:

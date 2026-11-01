@@ -12,6 +12,7 @@ class HospitalQrCodeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = MockAppState();
     final profile = state.elderlyProfile;
+    state.ensureHospitalQrUrl();
 
     final qrData = """
 ELDERGUARD EMERGENCY MEDICAL SUMMARY
@@ -108,17 +109,22 @@ Linking Code: ${profile.linkingCode}
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: AppColors.borderLight),
                         ),
-                        child: QrImageView(
-                          data: qrData,
-                          version: QrVersions.auto,
-                          size: 210,
-                          eyeStyle: const QrEyeStyle(
-                            eyeShape: QrEyeShape.square,
-                            color: Color(0xFF0F172A),
-                          ),
-                          dataModuleStyle: const QrDataModuleStyle(
-                            dataModuleShape: QrDataModuleShape.square,
-                            color: Color(0xFF0F172A),
+                        // Secure tokenized link to the zero-login hospital page (FR-04);
+                        // falls back to the offline text summary when the backend is unreachable.
+                        child: ListenableBuilder(
+                          listenable: state,
+                          builder: (context, _) => QrImageView(
+                            data: state.activeQrToken ?? qrData,
+                            version: QrVersions.auto,
+                            size: 210,
+                            eyeStyle: const QrEyeStyle(
+                              eyeShape: QrEyeShape.square,
+                              color: Color(0xFF0F172A),
+                            ),
+                            dataModuleStyle: const QrDataModuleStyle(
+                              dataModuleShape: QrDataModuleShape.square,
+                              color: Color(0xFF0F172A),
+                            ),
                           ),
                         ),
                       ),

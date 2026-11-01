@@ -1,5 +1,7 @@
-from typing import Optional, List
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
+
 
 class Token(BaseModel):
     access_token: str
@@ -9,19 +11,17 @@ class Token(BaseModel):
     full_name: str
     linking_code: Optional[str] = None
 
-class TokenPayload(BaseModel):
-    sub: Optional[str] = None
-    role: Optional[str] = None
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., description="Phone number or Email")
+    username: str = Field(..., description="Phone number or email")
     password: str
 
+
 class ElderlyRegisterRequest(BaseModel):
-    full_name: str
-    phone: str
-    password: str
-    age: int
+    full_name: str = Field(..., min_length=2, max_length=128)
+    phone: str = Field(..., min_length=7, max_length=32)
+    password: str = Field(..., min_length=6, max_length=128)
+    age: int = Field(..., ge=40, le=120)
     gender: str
     blood_group: str
     address: str
@@ -32,10 +32,19 @@ class ElderlyRegisterRequest(BaseModel):
     emergency_contact_relation: str
     emergency_contact_phone: str
 
+
 class CaregiverRegisterRequest(BaseModel):
-    full_name: str
+    full_name: str = Field(..., min_length=2, max_length=128)
     email: Optional[str] = None
-    phone: str
-    password: str
+    phone: str = Field(..., min_length=7, max_length=32)
+    password: str = Field(..., min_length=6, max_length=128)
     relationship_to_elder: str
     elderly_linking_code: Optional[str] = None
+
+
+class UserOut(BaseModel):
+    id: str
+    phone: str
+    email: Optional[str]
+    full_name: str
+    role: str

@@ -3,6 +3,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../widgets/common/clinical_button.dart';
 import '../../widgets/common/clinical_card.dart';
+import '../../state/mock_app_state.dart';
 import 'bluetooth_pairing_screen.dart';
 
 class MyWearableScreen extends StatefulWidget {
@@ -13,8 +14,25 @@ class MyWearableScreen extends StatefulWidget {
 }
 
 class _MyWearableScreenState extends State<MyWearableScreen> {
-  bool _isConnected = true;
+  final MockAppState _appState = MockAppState();
+  bool get _isConnected => _appState.isWearableConnected;
   bool _isLocating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _appState.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    _appState.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
 
   void _locateBand() {
     setState(() => _isLocating = true);
@@ -111,13 +129,13 @@ class _MyWearableScreenState extends State<MyWearableScreen> {
                             color: AppColors.successSoftBg,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Row(
+                          child: Row(
                             children: [
-                              Icon(Icons.battery_charging_full_rounded,
+                              const Icon(Icons.battery_charging_full_rounded,
                                   size: 16, color: AppColors.successGreen),
-                              SizedBox(width: 4),
+                              const SizedBox(width: 4),
                               Text(
-                                "92%",
+                                "${_appState.wearableBattery}%",
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -246,7 +264,7 @@ class _MyWearableScreenState extends State<MyWearableScreen> {
               ClinicalButton(
                 text: "Reconnect Device",
                 onPressed: () {
-                  setState(() => _isConnected = true);
+                  _appState.reconnectWearable();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text("Wearable connection refreshed!"),

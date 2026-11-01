@@ -1,16 +1,18 @@
-from ..core.database import Base
-from .user import User
-from .elderly import ElderlyProfile, EmergencyContact, HospitalQRToken
-from .caregiver import CaregiverProfile, CaregiverElderlyLink
-from .vitals import WearableDevice, HealthVital
-from .medication import Medication, MedicationLog
+from ..db.base import Base
+from .caregiver import CaregiverElderlyLink, CaregiverProfile
+from .elderly import ElderlyProfile, EmergencyContact, HospitalQRToken, PatientBaseline
 from .emergency import EmergencyIncident, IncidentNotification
-from .ai_risk import RiskAssessment
+from .medication import Medication, MedicationLog
+from .risk import RiskAssessment
+from .user import PushDeviceToken, User
+from .vitals import HealthVital, WearableDevice
 
 __all__ = [
     "Base",
     "User",
+    "PushDeviceToken",
     "ElderlyProfile",
+    "PatientBaseline",
     "EmergencyContact",
     "HospitalQRToken",
     "CaregiverProfile",

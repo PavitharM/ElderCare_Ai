@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Medical Summary - {{ s.patient_name }}{% endblock %}
+{% block content %}
+<header>
+  <div>
+    <h1>{{ s.patient_name }}</h1>
+    <div style="color:#5B6B7B">ElderGuard AI - Emergency Medical Summary</div>
+  </div>
+  <div class="meta">
+    Generated {{ s.generated_at | local }}<br>
+    QR valid until {{ s.expires_at | local }}<br>
+    <button class="print-btn no-print" onclick="window.print()">Print summary (Ctrl+P)</button>
+  </div>
+</header>
+
+<section class="grid">
+  <div class="field"><span>Age</span><b>{{ s.age }}</b></div>
+  <div class="field"><span>Gender</span><b>{{ s.gender }}</b></div>
+  <div class="field"><span>Blood group</span><b>{{ s.blood_group }}</b></div>
+  <div class="field"><span>Current risk</span>
+    <b class="st-{{ 'critical' if s.risk_level in ['critical', 'high_risk'] else ('warning' if s.risk_level == 'warning' else 'normal') }}">{{ s.risk_label or 'Not assessed' }}</b>
+  </div>
+</section>
+
+{% if s.allergies %}
+<h2>Allergies</h2>
+<div class="alert">{{ s.allergies | join(', ') }}</div>
+{% endif %}
+
+<div class="two">
+  <section>
+    <h2>Chronic conditions</h2>
+    {% if s.chronic_conditions %}<ul>{% for c in s.chronic_conditions %}<li>{{ c }}</li>{% endfor %}</ul>{% else %}<p>None recorded</p>{% endif %}
+  </section>
+  <section>
+    <h2>Active medications</h2>
+    {% if s.active_medications %}<ul>{% for m in s.active_medications %}<li>{{ m }}</li>{% endfor %}</ul>{% else %}<p>None recorded</p>{% endif %}
+  </section>
+</div>
+
+<h2>Recent vital signs</h2>
+<table>
+  <thead><tr><th>Measure</th><th>Latest</th><th>Status</th><th>Measured</th><th>24h min / avg / max</th></tr></thead>
+  <tbody>
+  {% for key, label in labels.items() %}
+    {% set v = s.latest_vitals.get(key) %}
+    {% set d = s.vitals_24h.get(key) %}
+    <tr>
+      <td>{{ label }}</td>
+      {% if v %}
+        <td><b>{{ '%g' % v.value }} {{ v.unit }}</b></td>
+        <td class="st-{{ v.status }}">{{ v.status | capitalize }}</td>
+        <td>{{ v.measured_at | local }}</td>
+      {% else %}
+        <td colspan="3">No data</td>
+      {% endif %}
+      <td>{% if d %}{{ '%g' % d.min }} / {{ '%g' % d.avg }} / {{ '%g' % d.max }}{% else %}-{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<div class="two">
+  <section>
+    <h2>Primary doctor</h2>
+    <p>{{ s.primary_doctor or 'Not recorded' }}</p>
+  </section>
+  <section>
+    <h2>Emergency contacts</h2>
+    {% if s.emergency_contacts %}<ul>{% for c in s.emergency_contacts %}<li>{{ c.name }} ({{ c.relationship }}) - {{ c.phone }}</li>{% endfor %}</ul>{% else %}<p>None recorded</p>{% endif %}
+  </section>
+</div>
+
+<footer>{{ disclaimer }} Readings come from a prototype wearable and must be confirmed clinically. Read-only view; access is logged.</footer>
+{% endblock %}
