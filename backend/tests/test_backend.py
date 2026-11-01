@@ -169,9 +169,9 @@ def test_ai_risk_assessment():
     risk_res = client.get("/api/v1/ai/risk-assessment/latest", headers=headers)
     assert risk_res.status_code == 200
     risk = risk_res.json()
-    assert risk["risk_level"] in ["low", "moderate", "high"]
+    assert risk["risk_level"] in ["normal", "warning", "high_risk", "critical"]
     assert len(risk["contributing_factors"]) > 0
-    assert "not a clinical medical diagnosis" in risk["disclaimer"]
+    assert "not a medical diagnosis" in risk["disclaimer"]
 
 def test_caregiver_portal():
     login_res = client.post("/api/v1/auth/login", json={

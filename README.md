@@ -1,110 +1,89 @@
-# ElderGuard AI — AI-Powered Elderly Health & Emergency Assistance System
+<<<<<<< HEAD
+# ElderCare_AI
+=======
+# ElderGuard AI
 
-ElderGuard AI is an AI-powered IoT-based personalized elderly health monitoring and emergency assistance system.
+An AI-powered, IoT-based system for personalized elderly health monitoring and emergency assistance. It has four parts:
+- an ESP32 wearable
+- a dual-mode Flutter app (Elderly Mode and Caregiver Mode)
+- a FastAPI + MySQL backend with a risk engine
+- a zero-login hospital QR summary page
 
----
-
-## Architecture Overview
+> **New to the project? Read [docs/SUMMARY.md](docs/SUMMARY.md) first.** It covers the requirements, the IoT protocol, every API endpoint and the data formats.
 
 ```
-ElderCare/
-├── backend/                       # Python FastAPI Backend
-│   ├── app/
-│   │   ├── api/v1/                # REST API Routers (auth, elderly, caregiver, vitals, etc.)
-│   │   ├── core/                  # Security, Database session, Config, Seed data
-│   │   ├── models/                # SQLAlchemy 2.0 ORM Models
-│   │   ├── schemas/               # Pydantic v2 validation schemas
-│   │   ├── ai/                    # AI Risk Assessment Observation Engine
-│   │   └── main.py                # FastAPI Application Entrypoint
-│   ├── alembic/                   # Alembic database migrations
-│   ├── tests/                     # Automated pytest suite
-│   ├── .env.example               # Environment variable template
-│   ├── requirements.txt           # Python backend dependencies
-│   └── run.py                     # Uvicorn launcher
-├── lib/                           # Flutter Frontend (26 Stitch-matched UI screens)
-│   ├── core/                      # Clinical Empathy design system, theme, typography
-│   ├── models/                    # Frontend Dart data models
-│   ├── screens/                   # Onboarding, Elderly, Caregiver, Wearable, Emergency flows
-│   ├── services/                  # ApiClient & ElderGuardApiService
-│   ├── state/                     # AppState with live FastAPI & fallback sync
-│   └── widgets/                   # Clinical buttons, cards, pulse radar, nav bars
-└── assets/images/                 # Original illustrations, avatars, and icons
+ElderCare_Ai/
+├── backend/                 FastAPI + MySQL (API, risk engine, hospital QR page)
+├── frontend/                Flutter mobile app
+├── firmware/esp32-wearable/ ESP32 firmware (PlatformIO)
+└── docs/SUMMARY.md          project summary
 ```
 
----
+## Prerequisites
 
-## 1. Prerequisites
-- **Python**: 3.9+
-- **MySQL**: 8.0+ (running locally on port 3306)
-- **Flutter**: 3.24+ / 3.47+
+| Tool | Version |
+|---|---|
+| Python | 3.11+ |
+| MySQL | 8.0+ |
+| Flutter | 3.24+ |
+| PlatformIO | For the firmware only |
 
----
+## 1. Backend
 
-## 2. Backend Setup & Run
+Run these from the `backend/` folder. The commands below are for Windows PowerShell (macOS/Linux equivalents are in comments).
 
-### A. Start MySQL Service
 ```bash
-brew services start mysql
+python -m venv venv
+venv\Scripts\activate              # macOS/Linux: source venv/bin/activate
+pip install -r requirements-dev.txt
+copy .env.example .env             # macOS/Linux: cp .env.example .env
 ```
 
-### B. Setup Python Virtual Environment & Install Dependencies
+Then:
+1. Edit `.env`: set `DATABASE_URL` and `SECRET_KEY`.
+2. Create the database in MySQL: `CREATE DATABASE elderguard_db;`
+3. Run the migrations, load the demo data, and start the server:
+
 ```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+alembic upgrade head               # create/upgrade tables
+python -m app.db.seed              # demo data (safe to re-run)
+python run.py                      # http://localhost:8000/docs
 ```
 
-### C. Run Database Migrations (Alembic)
+Optional: `pytest` runs the tests against the seeded database.
+
+## 2. Flutter app
+
+Run these from the `frontend/` folder.
+
 ```bash
-source venv/bin/activate
-alembic upgrade head
+flutter pub get
+flutter run -d chrome              # UI testing; wearable is simulated on web
+flutter run                        # Android phone: real BLE wearable
 ```
 
-### D. Seed Initial Clinical Test Data
+On a **physical Android phone**, point the app at your PC's LAN IP:
+
 ```bash
-source venv/bin/activate
-python -m app.core.seed_data
+flutter run --dart-define=API_BASE_URL=http://192.168.1.20:8000/api/v1
 ```
 
-### E. Run Automated Backend Tests
-```bash
-source venv/bin/activate
-PYTHONPATH=. pytest tests/test_backend.py -v
-```
+Also set `PUBLIC_BASE_URL=http://192.168.1.20:8000` in `backend/.env`, so the hospital QR code opens on other devices.
 
-### F. Start the FastAPI Server
-```bash
-source venv/bin/activate
-python run.py
-# Or: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-Interactive Swagger API documentation: **http://localhost:8000/docs**
+## 3. Wearable firmware
 
----
+See [firmware/esp32-wearable/README.md](firmware/esp32-wearable/README.md) for wiring and flashing (`pio run -t upload`).
 
-## 3. Frontend Setup & Run (Flutter)
+## Test accounts
 
-### In Chrome / Web:
-```bash
-flutter run -d chrome
-```
-*(Or view production build at `http://localhost:8080`)*
+| Role | Login | Password |
+|---|---|---|
+| Elderly (Kamala Perera) | `+94771234567` | `password123` |
+| Caregiver (Nimal Perera) | `+94719876543` or `nimal.perera@gmail.com` | `password123` |
 
-### On Android Emulator:
-```bash
-flutter run -d emulator-5554
-```
+Linking code: `EG-8829-KP`
 
----
+## Disclaimer
 
-## 4. Test Accounts & Linking Code
-
-- **Elderly Patient (Kamala Perera)**:
-  - Phone: `+94771234567`
-  - Password: `password123`
-  - Linking Code: `EG-8829-KP`
-- **Primary Caregiver (Nimal Perera)**:
-  - Phone: `+94719876543`
-  - Email: `nimal.perera@gmail.com`
-  - Password: `password123`
+ElderGuard AI is an academic decision-support prototype. It is not a medical device and does not provide diagnosis.
+>>>>>>> 5205652cc743610c7b79b616be5c280cec324df5

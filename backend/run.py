@@ -1,3 +1,5 @@
+"""Development server: python run.py (use `uvicorn app.main:app` without --reload in production)."""
+
 import uvicorn
 
 if __name__ == "__main__":

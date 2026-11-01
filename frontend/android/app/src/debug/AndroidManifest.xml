@@ -4,4 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Debug only: allow plain HTTP to the local FastAPI server. Release builds require HTTPS (NFR-05). -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

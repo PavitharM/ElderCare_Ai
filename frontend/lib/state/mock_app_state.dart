@@ -1,10 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/vital_metric.dart';
 import '../models/medication.dart';
 import '../models/emergency_event.dart';
 import '../models/user_profile.dart';
 import '../core/constants/app_assets.dart';
+import '../core/navigation/app_navigator.dart';
+import '../screens/emergency/fall_detected_countdown_screen.dart';
+import '../services/ble/ble_protocol.dart';
+import '../services/ble/wearable_ble_service.dart';
 import '../services/elderguard_api_service.dart';
+import '../services/emergency_sms_service.dart';
 
 enum AppUserRole { elderly, caregiver }
 
@@ -12,8 +19,38 @@ class MockAppState extends ChangeNotifier {
   static final MockAppState _instance = MockAppState._internal();
   factory MockAppState() => _instance;
   MockAppState._internal() {
+    _sms.ensurePermission(); // ask up front so SMS works when an emergency happens
     initBackendSync();
   }
+
+  final EmergencySmsService _sms = EmergencySmsService();
+
+  // Direct SMS recipients (caregivers + emergency contacts). Refreshed from the backend
+  // after login; the profile's emergency contact is the offline fallback.
+  late List<String> alertPhones = [elderlyProfile.emergencyContactPhone.replaceAll(" ", "")];
+  DateTime? _lastEmergencySmsAt;
+  static const Duration _criticalSmsCooldown = Duration(minutes: 10);
+
+  /// Sends the emergency SMS from the patient's phone (works without internet).
+  Future<void> _sendEmergencySms(String reason) async {
+    _lastEmergencySmsAt = DateTime.now();
+    final time = TimeOfDay.fromDateTime(DateTime.now());
+    final hh = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final mm = time.minute.toString().padLeft(2, "0");
+    final period = time.period == DayPeriod.am ? "AM" : "PM";
+    final message = "ElderGuard EMERGENCY: ${elderlyProfile.name} - $reason at $hh:$mm $period. "
+        "Last vitals: HR ${heartRate.value} ${heartRate.unit}, SpO2 ${spO2.value}%, Temp ${temperature.value}°C. "
+        "Please check on them immediately.";
+    final sent = await _sms.sendToAll(alertPhones, message);
+    debugPrint("Emergency SMS sent to $sent contact(s): $reason");
+  }
+
+  // Hard critical limits mirrored from the backend (core/constants.py) so the phone can
+  // alert even when the backend is unreachable.
+  bool _isLocallyCritical(WearablePacket p) =>
+      (p.heartRate != null && (p.heartRate! < 40 || p.heartRate! > 130)) ||
+      (p.spo2 != null && p.spo2! < 90) ||
+      (p.temperature != null && (p.temperature! < 35 || p.temperature! >= 39));
 
   final ElderGuardApiService _apiService = ElderGuardApiService();
 
@@ -34,6 +71,9 @@ class MockAppState extends ChangeNotifier {
       if (loginData != null) {
         isBackendConnected = true;
         await syncDataFromBackend();
+        final phones = await _apiService.getAlertContactPhones();
+        if (phones != null && phones.isNotEmpty) alertPhones = phones;
+        await _restorePairedWearable();
       }
     } catch (e) {
       debugPrint("Live backend offline. Falling back to local clinical mock state: $e");
@@ -67,9 +107,92 @@ class MockAppState extends ChangeNotifier {
   int wearableBattery = 92;
   String wearableName = "ElderGuard Band V2 #8492";
 
+  String? pairedWearableId;
+  final WearableBleService _ble = WearableBleService();
+  StreamSubscription<WearablePacket>? _packetSub;
+  StreamSubscription<bool>? _connectionSub;
+
   void setWearableConnection(bool connected) {
     isWearableConnected = connected;
     notifyListeners();
+  }
+
+  /// Connect to a scanned ESP32 and register it with the backend (FR-05, FR-07).
+  Future<bool> pairWearable(String deviceId, String name) async {
+    try {
+      await _ble.connect(deviceId);
+      _listenToWearable();
+      final ok = await _apiService.pairDevice(name: name, deviceId: deviceId, battery: wearableBattery);
+      pairedWearableId = deviceId;
+      wearableName = name;
+      isWearableConnected = true;
+      notifyListeners();
+      return ok;
+    } catch (e) {
+      debugPrint("Wearable pairing failed: $e");
+      return false;
+    }
+  }
+
+  Future<void> reconnectWearable() async {
+    if (!WearableBleService.isSupported || pairedWearableId == null) return;
+    try {
+      await _ble.connect(pairedWearableId!);
+      _listenToWearable();
+    } catch (e) {
+      debugPrint("Wearable reconnect failed: $e");
+    }
+  }
+
+  // Re-connect to the wearable stored on the backend after an app restart.
+  Future<void> _restorePairedWearable() async {
+    final device = await _apiService.getMyDevice();
+    if (device == null) return;
+    wearableName = device["device_name"] ?? wearableName;
+    wearableBattery = device["battery_level"] ?? wearableBattery;
+    final id = device["mac_address"] as String?;
+    if (id != null && device["is_simulated"] != true) {
+      pairedWearableId = id;
+      await reconnectWearable();
+    }
+    notifyListeners();
+  }
+
+  void _listenToWearable() {
+    _packetSub ??= _ble.packets.listen(_onWearablePacket);
+    _connectionSub ??= _ble.connectionChanges.listen((connected) {
+      isWearableConnected = connected;
+      notifyListeners();
+      _apiService.updateDeviceStatus(connected, battery: wearableBattery);
+    });
+  }
+
+  Future<void> _onWearablePacket(WearablePacket packet) async {
+    final deviceId = pairedWearableId ?? _ble.deviceId;
+    if (deviceId == null) return;
+    if (packet.battery != null) wearableBattery = packet.battery!;
+
+    final result = await _apiService.sendTelemetry(packet.toTelemetryJson(deviceId));
+    if (packet.isFall) {
+      activeFallIncidentId = result?["incident_id"] as String?;
+      _openFallCountdown();
+    }
+    await syncDataFromBackend();
+
+    // Critical vitals: backend verdict, or local hard limits when offline. Rate-limited so a
+    // persisting condition (or an SOS/fall that was just texted) doesn't flood caregivers.
+    final critical = result?["risk_level"] == "critical" || _isLocallyCritical(packet);
+    final recentlyAlerted = _lastEmergencySmsAt != null &&
+        DateTime.now().difference(_lastEmergencySmsAt!) < _criticalSmsCooldown;
+    if (critical && !packet.isFall && !recentlyAlerted) {
+      await _sendEmergencySms("CRITICAL health readings detected by the wearable");
+    }
+  }
+
+  void _openFallCountdown() {
+    final nav = appNavigatorKey.currentState;
+    if (nav == null || FallDetectedCountdownScreen.isOpen) return;
+    nav.push(MaterialPageRoute(builder: (_) => FallDetectedCountdownScreen(incidentId: activeFallIncidentId)));
   }
 
   // Elderly Profile
@@ -224,10 +347,69 @@ class MockAppState extends ChangeNotifier {
     ),
   ];
 
+  String? activeFallIncidentId;
+
+  /// Called when the countdown screen opens. Wearable falls already have an incident;
+  /// the manual demo button records one here.
+  Future<void> beginFallCountdown(String? incidentId) async {
+    if (incidentId != null) {
+      activeFallIncidentId = incidentId;
+      return;
+    }
+    await triggerFall(2.8, "Living Room");
+  }
+
+  /// Countdown expired or user pressed "send now": alert caregivers (FR-14, FR-21).
+  Future<void> escalateActiveFall() async {
+    final id = activeFallIncidentId;
+    await Future.wait([
+      _sendEmergencySms("a FALL was detected and they did not respond"),
+      if (id != null) _apiService.escalateEmergency(id),
+    ]);
+  }
+
+  Future<void> cancelActiveFall() async {
+    final id = activeFallIncidentId;
+    activeFallIncidentId = null;
+    if (id != null) await cancelAlarm(id);
+  }
+
+  Future<void> triggerSos() async {
+    // SMS first (no internet needed), backend push in parallel
+    final smsFuture = _sendEmergencySms("SOS button pressed - they need help");
+    final res = await _apiService.triggerSos();
+    await smsFuture;
+    if (res != null) {
+      emergencyEvents.insert(
+        0,
+        EmergencyEvent(
+          id: res["id"] ?? "EVT-${DateTime.now().millisecondsSinceEpoch}",
+          title: res["title"] ?? "Manual SOS Triggered",
+          description: res["description"] ?? "Emergency help requested.",
+          timestamp: DateTime.now(),
+          severity: EventSeverity.critical,
+          location: res["location_text"] ?? "Home",
+          impactForceG: null,
+          resolved: false,
+        ),
+      );
+      notifyListeners();
+    }
+  }
+
+  /// URL encoded in the hospital QR code (FR-04). Generated once per app session.
+  Future<String?> ensureHospitalQrUrl() async {
+    if (activeQrToken != null || !isBackendConnected) return activeQrToken;
+    activeQrToken = await _apiService.generateHospitalQRToken();
+    if (activeQrToken != null) notifyListeners();
+    return activeQrToken;
+  }
+
   Future<void> triggerFall(double gForce, String location) async {
     try {
       final res = await _apiService.reportFall(impactG: gForce, location: location);
       if (res != null) {
+        activeFallIncidentId = res["id"] as String?;
         emergencyEvents.insert(
           0,
           EmergencyEvent(

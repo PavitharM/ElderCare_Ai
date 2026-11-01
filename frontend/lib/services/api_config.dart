@@ -1,8 +1,12 @@
 import 'package:flutter/foundation.dart';
 
 class ApiConfig {
-  // Configurable base URL
+  /// Override for physical phones (BLE needs a real device), e.g.
+  /// flutter run --dart-define=API_BASE_URL=http://192.168.1.20:8000/api/v1
+  static const String _override = String.fromEnvironment("API_BASE_URL");
+
   static String get baseUrl {
+    if (_override.isNotEmpty) return _override;
     if (kIsWeb) {
       return "http://localhost:8000/api/v1";
     }

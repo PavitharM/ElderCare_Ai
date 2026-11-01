@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../widgets/common/clinical_card.dart';
+import '../../state/mock_app_state.dart';
 import 'emergency_alert_sent_screen.dart';
 
 class EmergencySosConfirmScreen extends StatefulWidget {
@@ -25,6 +26,7 @@ class _EmergencySosConfirmScreenState extends State<EmergencySosConfirmScreen>
 
     _holdController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
+        MockAppState().triggerSos();
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -199,6 +201,7 @@ class _EmergencySosConfirmScreenState extends State<EmergencySosConfirmScreen>
               // Instant Trigger Option
               TextButton(
                 onPressed: () {
+                  MockAppState().triggerSos();
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(

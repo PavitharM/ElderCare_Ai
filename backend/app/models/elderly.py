@@ -1,8 +1,15 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON, Boolean
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import relationship as orm_relationship
-from ..core.database import Base
+
+from ..db.base import Base
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
 
 class ElderlyProfile(Base):
     __tablename__ = "elderly_profiles"
@@ -14,12 +21,12 @@ class ElderlyProfile(Base):
     blood_group = Column(String(8), nullable=False)
     address = Column(String(255), nullable=False)
     linking_code = Column(String(16), unique=True, index=True, nullable=False)
-    chronic_conditions = Column(JSON, default=list) # e.g. ["Hypertension", "Type 2 Diabetes"]
-    allergies = Column(JSON, default=list) # e.g. ["Penicillin"]
+    chronic_conditions = Column(JSON, default=list)
+    allergies = Column(JSON, default=list)
     primary_doctor = Column(String(128), nullable=True)
     avatar_url = Column(String(255), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     user = orm_relationship("User", back_populates="elderly_profile")
     caregiver_links = orm_relationship("CaregiverElderlyLink", back_populates="elderly", cascade="all, delete-orphan")
@@ -30,6 +37,28 @@ class ElderlyProfile(Base):
     emergencies = orm_relationship("EmergencyIncident", back_populates="elderly", cascade="all, delete-orphan")
     risk_assessments = orm_relationship("RiskAssessment", back_populates="elderly", cascade="all, delete-orphan")
     qr_tokens = orm_relationship("HospitalQRToken", back_populates="elderly", cascade="all, delete-orphan")
+    baseline = orm_relationship("PatientBaseline", back_populates="elderly", uselist=False, cascade="all, delete-orphan")
+
+
+class PatientBaseline(Base):
+    """Doctor-defined personal ranges used by the risk engine (SRS FR-27)."""
+
+    __tablename__ = "patient_baselines"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    elderly_id = Column(String(36), ForeignKey("elderly_profiles.id", ondelete="CASCADE"), unique=True, nullable=False)
+    heart_rate_min = Column(Numeric(5, 1), nullable=False)
+    heart_rate_max = Column(Numeric(5, 1), nullable=False)
+    spo2_min = Column(Numeric(5, 1), nullable=False)
+    temperature_min = Column(Numeric(4, 1), nullable=False)
+    temperature_max = Column(Numeric(4, 1), nullable=False)
+    notes = Column(Text, nullable=True)
+    defined_by = Column(String(128), nullable=True)  # e.g. "Dr. A. Wijesinghe"
+    updated_by_user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+    elderly = orm_relationship("ElderlyProfile", back_populates="baseline")
+
 
 class EmergencyContact(Base):
     __tablename__ = "emergency_contacts"
@@ -40,9 +69,10 @@ class EmergencyContact(Base):
     relationship = Column(String(64), nullable=False)
     phone = Column(String(32), nullable=False)
     priority_order = Column(Integer, default=1)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     elderly = orm_relationship("ElderlyProfile", back_populates="emergency_contacts")
+
 
 class HospitalQRToken(Base):
     __tablename__ = "hospital_qr_tokens"
@@ -53,6 +83,7 @@ class HospitalQRToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     is_revoked = Column(Boolean, default=False)
     access_count = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_accessed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     elderly = orm_relationship("ElderlyProfile", back_populates="qr_tokens")

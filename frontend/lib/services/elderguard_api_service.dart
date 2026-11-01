@@ -171,16 +171,101 @@ class ElderGuardApiService {
     }
   }
 
-  // Generate Emergency QR Token
+  // Generate Emergency QR Token. Returns the zero-login hospital URL encoded in the QR code.
   Future<String?> generateHospitalQRToken() async {
     try {
       final res = await _client.post("/triage/generate-token");
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        return data["qr_token"];
+        return data["qr_url"] ?? data["qr_token"];
       }
     } catch (e) {
       debugPrint("Generate QR token error: $e");
+    }
+    return null;
+  }
+
+  // Numbers the phone texts directly in an emergency
+  Future<List<String>?> getAlertContactPhones() async {
+    try {
+      final res = await _client.get("/elderly/me/alert-contacts");
+      if (res.statusCode == 200) {
+        final List list = jsonDecode(res.body);
+        return list.map((c) => c["phone"] as String).toList();
+      }
+    } catch (e) {
+      debugPrint("Get alert contacts error: $e");
+    }
+    return null;
+  }
+
+  // Manual SOS
+  Future<Map<String, dynamic>?> triggerSos({String location = "Home"}) async {
+    try {
+      final res = await _client.post("/emergencies/sos", body: {"location_text": location});
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (e) {
+      debugPrint("SOS error: $e");
+    }
+    return null;
+  }
+
+  // Fall countdown expired / user asked to send now
+  Future<bool> escalateEmergency(String incidentId) async {
+    try {
+      final res = await _client.post("/emergencies/$incidentId/escalate");
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint("Escalate emergency error: $e");
+      return false;
+    }
+  }
+
+  // Wearable
+  Future<Map<String, dynamic>?> getMyDevice() async {
+    try {
+      final res = await _client.get("/devices/my-device");
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (e) {
+      debugPrint("Get device error: $e");
+    }
+    return null;
+  }
+
+  Future<bool> pairDevice({required String name, required String deviceId, String? firmware, int? battery}) async {
+    try {
+      final res = await _client.post("/devices/pair", body: {
+        "device_name": name,
+        "mac_address": deviceId,
+        "firmware_version": ?firmware,
+        "battery_level": ?battery,
+      });
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint("Pair device error: $e");
+      return false;
+    }
+  }
+
+  Future<void> updateDeviceStatus(bool connected, {int? battery}) async {
+    try {
+      await _client.put("/devices/my-device/status", body: {
+        "connection_status": connected ? "connected" : "disconnected",
+        "battery_level": ?battery,
+      });
+    } catch (e) {
+      debugPrint("Device status error: $e");
+    }
+  }
+
+  // Relay one wearable packet; returns the server result (risk level, incident id)
+  Future<Map<String, dynamic>?> sendTelemetry(Map<String, dynamic> body) async {
+    try {
+      final res = await _client.post("/vitals/telemetry", body: body);
+      if (res.statusCode == 200) return jsonDecode(res.body);
+      debugPrint("Telemetry rejected (${res.statusCode}): ${res.body}");
+    } catch (e) {
+      debugPrint("Telemetry error: $e");
     }
     return null;
   }

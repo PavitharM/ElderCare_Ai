@@ -3,11 +3,18 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../widgets/common/clinical_card.dart';
+import '../../state/mock_app_state.dart';
 import 'emergency_alert_sent_screen.dart';
 import 'fall_event_details_screen.dart';
 
 class FallDetectedCountdownScreen extends StatefulWidget {
-  const FallDetectedCountdownScreen({super.key});
+  /// Set when the wearable reported the fall (incident already recorded by the backend).
+  final String? incidentId;
+
+  const FallDetectedCountdownScreen({super.key, this.incidentId});
+
+  /// Prevents a second wearable fall packet from stacking another countdown.
+  static bool isOpen = false;
 
   @override
   State<FallDetectedCountdownScreen> createState() => _FallDetectedCountdownScreenState();
@@ -19,9 +26,13 @@ class _FallDetectedCountdownScreenState extends State<FallDetectedCountdownScree
   Timer? _countdownTimer;
   late AnimationController _pulseController;
 
+  final MockAppState _appState = MockAppState();
+
   @override
   void initState() {
     super.initState();
+    FallDetectedCountdownScreen.isOpen = true;
+    _appState.beginFallCountdown(widget.incidentId);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -39,6 +50,7 @@ class _FallDetectedCountdownScreenState extends State<FallDetectedCountdownScree
 
   @override
   void dispose() {
+    FallDetectedCountdownScreen.isOpen = false;
     _countdownTimer?.cancel();
     _pulseController.dispose();
     super.dispose();
@@ -46,6 +58,7 @@ class _FallDetectedCountdownScreenState extends State<FallDetectedCountdownScree
 
   void _triggerEmergencyAlert() {
     _countdownTimer?.cancel();
+    _appState.escalateActiveFall();
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -56,6 +69,7 @@ class _FallDetectedCountdownScreenState extends State<FallDetectedCountdownScree
 
   void _cancelAlert() {
     _countdownTimer?.cancel();
+    _appState.cancelActiveFall();
     showDialog(
       context: context,
       barrierDismissible: false,

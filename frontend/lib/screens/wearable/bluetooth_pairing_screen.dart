@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
+import '../../services/ble/wearable_ble_service.dart';
+import '../../state/mock_app_state.dart';
 import '../../widgets/common/clinical_card.dart';
 import '../../widgets/emergency/pulse_radar.dart';
 import 'pairing_successful_screen.dart';
@@ -14,8 +19,52 @@ class BluetoothPairingScreen extends StatefulWidget {
 
 class _BluetoothPairingScreenState extends State<BluetoothPairingScreen> {
   String? _pairingDeviceId;
+  StreamSubscription<List<ScanResult>>? _scanSub;
+  List<Map<String, dynamic>> _scanned = [];
 
-  final List<Map<String, dynamic>> _devices = [
+  // Real BLE scan results on Android/iOS; demo list on web/desktop builds.
+  List<Map<String, dynamic>> get _devices => WearableBleService.isSupported ? _scanned : _demoDevices;
+
+  @override
+  void initState() {
+    super.initState();
+    if (WearableBleService.isSupported) {
+      _scanSub = WearableBleService().scan().listen(
+            (results) => setState(() => _scanned = _toCards(results)),
+            onError: (e) => debugPrint("BLE scan error: $e"),
+          );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scanSub?.cancel();
+    WearableBleService().stopScan();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> _toCards(List<ScanResult> results) {
+    final sorted = [...results]..sort((a, b) => b.rssi.compareTo(a.rssi));
+    return [
+      for (var i = 0; i < sorted.length; i++)
+        {
+          "id": sorted[i].device.remoteId.str,
+          "name": sorted[i].advertisementData.advName.isNotEmpty
+              ? sorted[i].advertisementData.advName
+              : sorted[i].device.remoteId.str,
+          "type": "ElderGuard Smart Band",
+          "signal": sorted[i].rssi >= -60
+              ? "Strong Signal (${sorted[i].rssi} dBm)"
+              : sorted[i].rssi >= -80
+                  ? "Moderate (${sorted[i].rssi} dBm)"
+                  : "Weak (${sorted[i].rssi} dBm)",
+          "battery": "--",
+          "recommended": i == 0,
+        },
+    ];
+  }
+
+  final List<Map<String, dynamic>> _demoDevices = [
     {
       "id": "DEV-8492",
       "name": "ElderGuard Band V2 #8492",
@@ -44,6 +93,10 @@ class _BluetoothPairingScreenState extends State<BluetoothPairingScreen> {
 
   void _startPairing(String id) {
     setState(() => _pairingDeviceId = id);
+    if (WearableBleService.isSupported) {
+      _pairRealDevice(id);
+      return;
+    }
     Future.delayed(const Duration(milliseconds: 1400), () {
       if (mounted) {
         Navigator.pushReplacement(
@@ -54,6 +107,26 @@ class _BluetoothPairingScreenState extends State<BluetoothPairingScreen> {
         );
       }
     });
+  }
+
+  Future<void> _pairRealDevice(String id) async {
+    final device = _scanned.firstWhere((d) => d["id"] == id);
+    final ok = await MockAppState().pairWearable(id, device["name"] as String);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const PairingSuccessfulScreen()),
+      );
+    } else {
+      setState(() => _pairingDeviceId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Could not connect to the wearable. Keep it close and try again."),
+          backgroundColor: AppColors.emergencyRed,
+        ),
+      );
+    }
   }
 
   @override
