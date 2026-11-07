@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..core.constants import DISCLAIMER, METRIC_LABELS
 from ..core.time import LOCAL_TZ
 from ..db.session import get_db
-from ..services import triage
+from ..services import triage 
 
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
