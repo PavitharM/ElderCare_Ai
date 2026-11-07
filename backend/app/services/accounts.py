@@ -12,7 +12,7 @@ from ..models.caregiver import CaregiverElderlyLink, CaregiverProfile
 from ..models.elderly import ElderlyProfile, EmergencyContact
 from ..models.user import User
 from ..schemas.auth import CaregiverRegisterRequest, ElderlyRegisterRequest
-
+//we want to add some changes
 
 def _unique_linking_code(db: Session) -> str:
     for _ in range(20):
