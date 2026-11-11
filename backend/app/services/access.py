@@ -71,4 +71,3 @@ def ensure_can_access(db: Session, user: User, elderly_id: str, permission: Opti
     link = active_link(db, user, elderly_id)
     if link is None or (permission and not link.allows(permission)):
         raise forbidden()
-// end of one
