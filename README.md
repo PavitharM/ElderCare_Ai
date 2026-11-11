@@ -1,7 +1,5 @@
-<<<<<<< HEAD
+
 # ElderCare_AI
-=======
-# ElderGuard AI
 
 An AI-powered, IoT-based system for personalized elderly health monitoring and emergency assistance. It has four parts:
 - an ESP32 wearable
