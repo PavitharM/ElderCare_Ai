@@ -187,3 +187,4 @@ def has_active_sos(db: Session, elderly_id: str) -> bool:
         .first()
         is not None
     )
+//emergency end
