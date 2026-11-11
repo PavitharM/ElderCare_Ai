@@ -223,3 +223,4 @@ def adherence_summary(db: Session, elderly_id: str) -> dict:
         "total_doses_this_week": counts["total"],
         "missed_doses_this_week": counts["missed"],
     }
+//medication end
