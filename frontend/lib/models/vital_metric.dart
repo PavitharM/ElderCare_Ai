@@ -24,4 +24,16 @@ class VitalReading {
     required this.normalRange,
     required this.history7Days,
   });
+
+  VitalReading copyWith({String? value, String? statusText, MetricStatus? status}) => VitalReading(
+        label: label,
+        value: value ?? this.value,
+        unit: unit,
+        statusText: statusText ?? this.statusText,
+        status: status ?? this.status,
+        icon: icon,
+        tintColor: tintColor,
+        normalRange: normalRange,
+        history7Days: history7Days,
+      );
 }

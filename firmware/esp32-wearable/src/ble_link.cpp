@@ -5,11 +5,11 @@
 class BleLink::ServerCallbacks : public NimBLEServerCallbacks {
  public:
   explicit ServerCallbacks(BleLink *link) : link_(link) {}
-  void onConnect(NimBLEServer *server) override {
+  void onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) override {
     link_->connected_ = true;
     link_->syncRequested_ = true;  // send current values + queued alerts right away
   }
-  void onDisconnect(NimBLEServer *server) override {
+  void onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) override {
     link_->connected_ = false;
     NimBLEDevice::startAdvertising();
   }
@@ -21,7 +21,7 @@ class BleLink::ServerCallbacks : public NimBLEServerCallbacks {
 class BleLink::ControlCallbacks : public NimBLECharacteristicCallbacks {
  public:
   explicit ControlCallbacks(BleLink *link) : link_(link) {}
-  void onWrite(NimBLECharacteristic *characteristic) override {
+  void onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) override {
     std::string cmd = characteristic->getValue();
     if (cmd == "SYNC" || cmd == "PING") link_->syncRequested_ = true;
   }
@@ -33,7 +33,7 @@ class BleLink::ControlCallbacks : public NimBLECharacteristicCallbacks {
 void BleLink::begin(const std::string &deviceName) {
   NimBLEDevice::init(deviceName);
   NimBLEDevice::setMTU(BLE_MTU);
-  NimBLEDevice::setPower(ESP_PWR_LVL_P3);  // moderate TX power: enough for a room, saves battery
+  NimBLEDevice::setPower(3);  // moderate TX power: enough for a room, saves battery
 
   NimBLEServer *server = NimBLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks(this));
@@ -54,7 +54,11 @@ void BleLink::begin(const std::string &deviceName) {
 
   NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
   adv->addServiceUUID(BLE_SERVICE_UUID);
-  adv->setScanResponse(true);
+  // The 128-bit UUID fills the advertising packet, so the name goes in the scan response
+  NimBLEAdvertisementData scanResponse;
+  scanResponse.setName(deviceName);
+  adv->setScanResponseData(scanResponse);
+  adv->enableScanResponse(true);
   adv->setMinInterval(800);  // 500 ms advertising interval (units of 0.625 ms): low power
   adv->setMaxInterval(1600);
   adv->start();

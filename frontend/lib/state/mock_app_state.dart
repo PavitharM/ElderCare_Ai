@@ -46,11 +46,26 @@ class MockAppState extends ChangeNotifier {
   }
 
   // Hard critical limits mirrored from the backend (core/constants.py) so the phone can
-  // alert even when the backend is unreachable.
+  // alert even when the backend is unreachable. Warning bands match each vital's normal range.
+  MetricStatus _heartRateStatus(double bpm) {
+    if (bpm < 40 || bpm > 130) return MetricStatus.critical;
+    return bpm < 60 || bpm > 100 ? MetricStatus.warning : MetricStatus.normal;
+  }
+
+  MetricStatus _spo2Status(double percent) {
+    if (percent < 90) return MetricStatus.critical;
+    return percent < 95 ? MetricStatus.warning : MetricStatus.optimal;
+  }
+
+  MetricStatus _temperatureStatus(double celsius) {
+    if (celsius < 35 || celsius >= 39) return MetricStatus.critical;
+    return celsius < 36.1 || celsius > 37.2 ? MetricStatus.warning : MetricStatus.optimal;
+  }
+
   bool _isLocallyCritical(WearablePacket p) =>
-      (p.heartRate != null && (p.heartRate! < 40 || p.heartRate! > 130)) ||
-      (p.spo2 != null && p.spo2! < 90) ||
-      (p.temperature != null && (p.temperature! < 35 || p.temperature! >= 39));
+      (p.heartRate != null && _heartRateStatus(p.heartRate!) == MetricStatus.critical) ||
+      (p.spo2 != null && _spo2Status(p.spo2!) == MetricStatus.critical) ||
+      (p.temperature != null && _temperatureStatus(p.temperature!) == MetricStatus.critical);
 
   final ElderGuardApiService _apiService = ElderGuardApiService();
 
@@ -117,17 +132,20 @@ class MockAppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Connect to a scanned ESP32 and register it with the backend (FR-05, FR-07).
+  /// Connect to a scanned ESP32 and register it with the backend when reachable (FR-05, FR-07).
+  /// Pairing succeeds on the Bluetooth connection alone, so the wearable works offline.
   Future<bool> pairWearable(String deviceId, String name) async {
     try {
       await _ble.connect(deviceId);
       _listenToWearable();
-      final ok = await _apiService.pairDevice(name: name, deviceId: deviceId, battery: wearableBattery);
       pairedWearableId = deviceId;
       wearableName = name;
       isWearableConnected = true;
       notifyListeners();
-      return ok;
+      if (isBackendConnected) {
+        unawaited(_apiService.pairDevice(name: name, deviceId: deviceId, battery: wearableBattery));
+      }
+      return true;
     } catch (e) {
       debugPrint("Wearable pairing failed: $e");
       return false;
@@ -163,7 +181,7 @@ class MockAppState extends ChangeNotifier {
     _connectionSub ??= _ble.connectionChanges.listen((connected) {
       isWearableConnected = connected;
       notifyListeners();
-      _apiService.updateDeviceStatus(connected, battery: wearableBattery);
+      if (isBackendConnected) _apiService.updateDeviceStatus(connected, battery: wearableBattery);
     });
   }
 
@@ -171,13 +189,15 @@ class MockAppState extends ChangeNotifier {
     final deviceId = pairedWearableId ?? _ble.deviceId;
     if (deviceId == null) return;
     if (packet.battery != null) wearableBattery = packet.battery!;
+    _showPacketVitals(packet);
 
-    final result = await _apiService.sendTelemetry(packet.toTelemetryJson(deviceId));
+    // Offline, skip the network so a fall countdown isn't delayed by request timeouts.
+    final result = isBackendConnected ? await _apiService.sendTelemetry(packet.toTelemetryJson(deviceId)) : null;
     if (packet.isFall) {
       activeFallIncidentId = result?["incident_id"] as String?;
       _openFallCountdown();
     }
-    await syncDataFromBackend();
+    if (isBackendConnected) await syncDataFromBackend();
 
     // Critical vitals: backend verdict, or local hard limits when offline. Rate-limited so a
     // persisting condition (or an SOS/fall that was just texted) doesn't flood caregivers.
@@ -187,6 +207,29 @@ class MockAppState extends ChangeNotifier {
     if (critical && !packet.isFall && !recentlyAlerted) {
       await _sendEmergencySms("CRITICAL health readings detected by the wearable");
     }
+  }
+
+  // Show the wearable's readings straight away. A field missing from the packet means that
+  // sensor has no valid reading right now, so it must not keep showing an older number.
+  void _showPacketVitals(WearablePacket p) {
+    heartRate = _liveVital(heartRate, p.heartRate, 0, _heartRateStatus);
+    spO2 = _liveVital(spO2, p.spo2, 0, _spo2Status);
+    temperature = _liveVital(temperature, p.temperature, 1, _temperatureStatus);
+    notifyListeners();
+  }
+
+  VitalReading _liveVital(VitalReading vital, double? reading, int decimals, MetricStatus Function(double) statusOf) {
+    if (reading == null) {
+      return vital.copyWith(value: "--", statusText: "No reading", status: MetricStatus.normal);
+    }
+    final status = statusOf(reading);
+    final text = switch (status) {
+      MetricStatus.critical => "Critical",
+      MetricStatus.warning => "Needs Attention",
+      MetricStatus.normal => "Normal",
+      MetricStatus.optimal => "Optimal",
+    };
+    return vital.copyWith(value: reading.toStringAsFixed(decimals), statusText: text, status: status);
   }
 
   void _openFallCountdown() {

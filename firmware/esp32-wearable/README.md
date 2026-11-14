@@ -1,17 +1,17 @@
-# ElderGuard Wearable Firmware (ESP32)
+# ElderGuard Wearable Firmware (ESP32-S3)
 
-This firmware runs on an ESP32. It reads heart rate, SpO₂, skin temperature and motion, detects falls, and streams the data to the ElderGuard Android app over Bluetooth Low Energy (BLE).
+This firmware runs on an ESP32-S3-N16R8. It reads heart rate, SpO₂, skin temperature and motion, detects falls, and streams the data to the ElderGuard Android app over Bluetooth Low Energy (BLE).
 
 ## Hardware
 
-| Part | Purpose | ESP32 pin |
+| Part | Purpose | ESP32-S3 pin |
 |---|---|---|
-| MAX30102 | Heart rate and SpO₂ | SDA 21, SCL 22, 3.3 V |
-| MPU6050 | Motion, activity, fall detection | SDA 21, SCL 22, 3.3 V (shares the I2C bus) |
+| MAX30102 | Heart rate and SpO₂ | SDA GPIO 8, SCL GPIO 9, 3.3 V |
+| MPU6050 | Motion, activity, fall detection | SDA GPIO 8, SCL GPIO 9, 3.3 V (shares the I2C bus) |
 | DS18B20 | Skin temperature | Data on GPIO 4, with a 4.7 kΩ pull-up resistor to 3.3 V |
-| LiPo battery + 100k/100k divider | Battery level | GPIO 34 |
+| LiPo battery + 100k/100k divider | Battery level | GPIO 1 |
 
-All pins and thresholds are defined in `include/config.h`.
+All pins and thresholds are defined in `include/config.h`. Do not use GPIO 35–37 (octal PSRAM), 19–20 (native USB) or 0/45/46 (strapping pins).
 
 ## Build and flash
 
@@ -24,7 +24,9 @@ pio run -t upload
 pio device monitor
 ```
 
-The serial monitor runs at 115200 baud and prints every transmitted packet.
+Plug the USB cable into the board's **COM** (UART) port, not the native **USB** port. The serial monitor runs at 115200 baud and prints every transmitted packet.
+
+`platformio.ini` uses DIO flash mode because this board's flash chip (manufacturer ID `1c`) hangs at boot in QIO mode: the log stops at `entry 0x...` and the app never starts.
 
 ## How it saves power
 
@@ -66,6 +68,10 @@ Example packet (fields are omitted when a sensor has no valid reading, e.g. the 
 | `fall_g` | Peak impact (G), only present in `fall` packets |
 
 ## Calibration
+
+- **Heart rate and SpO₂:** finger placement and movement produce short bursts of wrong values (for example 148 BPM), so neither value is reported straight away (`PPG_*` in `config.h`); until then, `hr` and `spo2` are left out of packets.
+  - **Heart rate** counts pulse peaks over the last 8 s and is reported only when the beats are evenly spaced. On this sensor it is far steadier than the Maxim algorithm's estimate.
+  - **SpO₂** uses the Maxim algorithm, after the finger has been on the sensor for 5 s and at least 6 of the last 8 per-second readings agree. It uses Maxim's generic formula and is not clinically calibrated.
 
 - **Temperature:** the DS18B20 measures skin temperature, which is lower than core body temperature. Compare it with a clinical thermometer and set the difference in `TEMP_OFFSET_C`.
 - **Fall detection:** tune `FALL_*` in `config.h` after controlled tests. Record any false positives or negatives for the evaluation (SRS NFR-15).

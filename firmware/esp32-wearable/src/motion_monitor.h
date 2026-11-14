@@ -1,8 +1,10 @@
 #pragma once
-#include <Adafruit_MPU6050.h>
 #include <Arduino.h>
+#include <Wire.h>
 
-// MPU6050 fall detection (free fall -> impact -> stillness) and activity index.
+// MPU6050-compatible fall detection (free fall -> impact -> stillness) and activity index.
+// Talks to the chip directly: many GY-521 boards carry clones that report a WHO_AM_I other
+// than 0x68, which the Adafruit driver rejects even though their readings are fine.
 class MotionMonitor {
  public:
   bool begin(TwoWire &wire);
@@ -18,7 +20,11 @@ class MotionMonitor {
  private:
   enum class Phase { Idle, FreeFall, Impact };
 
-  Adafruit_MPU6050 mpu_;
+  void writeRegister(uint8_t reg, uint8_t value);
+  int readRegister(uint8_t reg);
+  bool readAccelMagnitudeG(float &magG);
+
+  TwoWire *wire_ = nullptr;
   Phase phase_ = Phase::Idle;
   unsigned long lastSample_ = 0;
   unsigned long phaseStart_ = 0;

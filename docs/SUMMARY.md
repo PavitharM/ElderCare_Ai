@@ -123,11 +123,11 @@ ElderCare_Ai/
 
 | Part | Measures | Connection |
 |---|---|---|
-| ESP32 DevKit | – | – |
-| MAX30102 | Heart rate, SpO₂ | I2C SDA 21 / SCL 22 |
+| ESP32-S3-N16R8 | – | – |
+| MAX30102 | Heart rate, SpO₂ | I2C SDA GPIO 8 / SCL GPIO 9 |
 | MPU6050 | Motion, activity, falls | I2C, shared bus |
 | DS18B20 | Skin temperature | GPIO 4, 4.7 kΩ pull-up |
-| LiPo + 100k/100k divider | Battery level | GPIO 34 |
+| LiPo + 100k/100k divider | Battery level | GPIO 1 |
 
 ### BLE GATT
 - **Advertised name:** `ElderGuard-XXXX`
@@ -167,7 +167,9 @@ Fields are omitted when a sensor has no valid reading.
 While the phone is disconnected, up to 8 `fall`/`abnormal` packets are queued and flushed on reconnect.
 
 ### End-to-end flow
-1. The phone receives a packet.
+Pairing needs only the Bluetooth connection. Without a backend, the app still shows each packet's readings (`--` for a missing field), opens the fall countdown, and sends the emergency SMS, but it skips steps 2 and 3.
+
+1. The phone receives a packet and shows its readings.
 2. It sends `POST /vitals/telemetry`.
 3. The backend validates and stores the readings, creates a fall incident if needed, re-runs the risk engine, and alerts caregivers if the result is Critical.
 4. For a `fall` packet, the app opens the 25 s countdown screen:
